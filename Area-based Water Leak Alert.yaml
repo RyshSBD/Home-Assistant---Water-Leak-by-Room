@@ -1,5 +1,5 @@
 blueprint:
-  name: Area-based Water Leak Alert (Acknowledgement Required, Multiple Devices)
+  name: Area-based Water Leak Alert (Acknowledgement Required, Multi-Device)
   description: >
     Sends repeating critical notifications for any water leak sensor
     in selected areas until manually acknowledged.
@@ -16,12 +16,13 @@ blueprint:
           multiple: true
 
     notify_services:
-      name: Mobile notification services
+      name: Mobile notification devices
       description: Select one or more mobile devices to notify
       selector:
-        service:
-          domain: notify
-          multiple: true
+        target:
+          entity:
+            domain: notify
+            multiple: true
 
     acknowledge_helper:
       name: Acknowledge helper
@@ -78,7 +79,9 @@ action:
         - repeat:
             for_each: "{{ notify_services }}"
             sequence:
-              - service: "{{ repeat.item }}"
+              - service: notify.send_message
+                target:
+                  entity_id: "{{ repeat.item }}"
                 data:
                   title: "🚨 WATER LEAK DETECTED"
                   message: >
