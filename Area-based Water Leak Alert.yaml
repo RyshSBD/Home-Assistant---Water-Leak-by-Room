@@ -17,12 +17,11 @@ blueprint:
 
     notify_services:
       name: Mobile notification devices
-      description: Select one or more mobile devices to notify
+      description: Select one or more notify entities to send alerts to
       selector:
-        target:
-          entity:
-            domain: notify
-            multiple: true
+        entity:
+          domain: notify
+          multiple: true
 
     acknowledge_helper:
       name: Acknowledge helper
