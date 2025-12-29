@@ -1,5 +1,5 @@
 blueprint:
-  name: Water Leak Alert (All Moisture Sensors)
+  name: Water Leak Alert (All Moisture Sensors, Single Mobile Device)
   description: >
     Sends repeating notifications for any moisture (water leak) sensor turning on.
     Notifications continue until acknowledged. Reports the exact sensor that triggered the leak.
@@ -7,13 +7,12 @@ blueprint:
   domain: automation
 
   input:
-    notify_target:
-      name: Notification device or group
-      description: Select a single notify entity or notify group to send alerts to
+    mobile_device:
+      name: Mobile Device
+      description: Enter the notify service name for your mobile device, e.g., notify.mobile_app_sams_iphone
+      default: notify.mobile_app_sams_iphone
       selector:
-        target:
-          entity:
-            domain: notify
+        text:
 
     acknowledge_helper:
       name: Acknowledge helper
@@ -36,7 +35,7 @@ mode: parallel
 max: 10
 
 variables:
-  notify_target: !input notify_target
+  mobile_device: !input mobile_device
   ack_helper: !input acknowledge_helper
   repeat_minutes: !input repeat_minutes
 
@@ -63,8 +62,7 @@ action:
           entity_id: "{{ ack_helper }}"
           state: "on"
       sequence:
-        - service: notify.send_message
-          target: "{{ notify_target }}"
+        - service: "{{ mobile_device }}"
           data:
             title: "🚨 WATER LEAK DETECTED"
             message: >
