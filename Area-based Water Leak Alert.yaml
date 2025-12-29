@@ -1,8 +1,10 @@
 blueprint:
-  name: Area-based Water Leak Alert (Acknowledgement Required)
+  name: Area-based Water Leak Alert (Acknowledgement Required, Multiple Devices)
   description: >
     Sends repeating critical notifications for any water leak sensor
     in selected areas until manually acknowledged.
+    Notifications can be sent to multiple mobile devices.
+
   domain: automation
 
   input:
@@ -13,11 +15,13 @@ blueprint:
         area:
           multiple: true
 
-    notify_service:
-      name: Mobile notification service
-      description: e.g. notify.mobile_app_your_iphone
+    notify_services:
+      name: Mobile notification services
+      description: Select one or more mobile devices to notify
       selector:
-        text:
+        service:
+          domain: notify
+          multiple: true
 
     acknowledge_helper:
       name: Acknowledge helper
@@ -38,6 +42,12 @@ blueprint:
 
 mode: parallel
 
+variables:
+  areas: !input leak_areas
+  notify_services: !input notify_services
+  ack_helper: !input acknowledge_helper
+  repeat_minutes: !input repeat_minutes
+
 trigger:
   - platform: state
     entity_id: >
@@ -52,13 +62,6 @@ trigger:
       }}
     to: "on"
 
-variables:
-  areas: !input leak_areas
-  notify_service: !input notify_service
-  ack_helper: !input acknowledge_helper
-  repeat_minutes: !input repeat_minutes
-  triggered_area: "{{ area_name(trigger.entity_id) }}"
-
 action:
   # Reset acknowledgement for a new incident
   - service: input_boolean.turn_off
@@ -72,21 +75,24 @@ action:
           state: "on"
 
       sequence:
-        - service: "{{ notify_service }}"
-          data:
-            title: "🚨 WATER LEAK DETECTED"
-            message: >
-              Water leak detected in {{ triggered_area }}.
-              Tap ACKNOWLEDGE once you have seen this.
-            data:
-              push:
-                sound:
-                  name: default
-                  critical: 1
-                  volume: 1.0
-              actions:
-                - action: ACK_WATER_LEAK
-                  title: "Acknowledge"
+        - repeat:
+            for_each: "{{ notify_services }}"
+            sequence:
+              - service: "{{ repeat.item }}"
+                data:
+                  title: "🚨 WATER LEAK DETECTED"
+                  message: >
+                    Water leak detected in {{ area_name(trigger.entity_id) }}.
+                    Tap ACKNOWLEDGE once you have seen this.
+                  data:
+                    push:
+                      sound:
+                        name: default
+                        critical: 1
+                        volume: 1.0
+                    actions:
+                      - action: ACK_WATER_LEAK
+                        title: "Acknowledge"
 
         - delay:
             minutes: "{{ repeat_minutes }}"
