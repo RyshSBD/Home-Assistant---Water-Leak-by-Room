@@ -1,0 +1,16 @@
+alias: Water Leak Acknowledged
+mode: single
+trigger:
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: ACK_WATER_LEAK
+
+action:
+  - service: input_boolean.turn_on
+    target:
+      entity_id: input_boolean.water_leak_acknowledged
+
+  - service: notify.mobile_app_your_iphone
+    data:
+      message: "✅ Water leak alert acknowledged."

@@ -1,0 +1,92 @@
+blueprint:
+  name: Area-based Water Leak Alert (Acknowledgement Required)
+  description: >
+    Sends repeating critical notifications for any water leak sensor
+    in selected areas until manually acknowledged.
+  domain: automation
+
+  input:
+    leak_areas:
+      name: Areas to monitor
+      description: Select areas containing water leak sensors
+      selector:
+        area:
+          multiple: true
+
+    notify_service:
+      name: Mobile notification service
+      description: e.g. notify.mobile_app_your_iphone
+      selector:
+        text:
+
+    acknowledge_helper:
+      name: Acknowledge helper
+      description: input_boolean used to stop notifications
+      selector:
+        entity:
+          domain: input_boolean
+
+    repeat_minutes:
+      name: Notification repeat interval (minutes)
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 30
+          step: 1
+          unit_of_measurement: minutes
+
+mode: parallel
+
+trigger:
+  - platform: state
+    entity_id: >
+      {{
+        expand(
+          areas | map('area_entities') | sum(start=[])
+        )
+        | selectattr('domain', 'eq', 'binary_sensor')
+        | selectattr('attributes.device_class', 'eq', 'moisture')
+        | map(attribute='entity_id')
+        | list
+      }}
+    to: "on"
+
+variables:
+  areas: !input leak_areas
+  notify_service: !input notify_service
+  ack_helper: !input acknowledge_helper
+  repeat_minutes: !input repeat_minutes
+  triggered_area: "{{ area_name(trigger.entity_id) }}"
+
+action:
+  # Reset acknowledgement for a new incident
+  - service: input_boolean.turn_off
+    target:
+      entity_id: "{{ ack_helper }}"
+
+  - repeat:
+      until:
+        - condition: state
+          entity_id: "{{ ack_helper }}"
+          state: "on"
+
+      sequence:
+        - service: "{{ notify_service }}"
+          data:
+            title: "🚨 WATER LEAK DETECTED"
+            message: >
+              Water leak detected in {{ triggered_area }}.
+              Tap ACKNOWLEDGE once you have seen this.
+            data:
+              push:
+                sound:
+                  name: default
+                  critical: 1
+                  volume: 1.0
+              actions:
+                - action: ACK_WATER_LEAK
+                  title: "Acknowledge"
+
+        - delay:
+            minutes: "{{ repeat_minutes }}"
