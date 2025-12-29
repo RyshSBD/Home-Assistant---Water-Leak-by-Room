@@ -1,19 +1,12 @@
 blueprint:
-  name: Water Leak Alert (Single Notify, Area-Based)
+  name: Water Leak Alert (All Moisture Sensors)
   description: >
-    Sends repeating critical notifications for any water leak sensor in selected areas until manually acknowledged.
-    Supports a single mobile device or notify group as the notification target.
+    Sends repeating notifications for any moisture (water leak) sensor turning on.
+    Notifications continue until acknowledged. Reports the exact sensor that triggered the leak.
 
   domain: automation
 
   input:
-    leak_areas:
-      name: Areas to monitor
-      description: Select areas containing water leak sensors
-      selector:
-        area:
-          multiple: true
-
     notify_target:
       name: Notification device or group
       description: Select a single notify entity or notify group to send alerts to
@@ -24,7 +17,7 @@ blueprint:
 
     acknowledge_helper:
       name: Acknowledge helper
-      description: Input boolean used to stop repeating notifications
+      description: Select the input_boolean used to stop repeating notifications
       selector:
         entity:
           domain: input_boolean
@@ -43,7 +36,6 @@ mode: parallel
 max: 10
 
 variables:
-  areas: !input leak_areas
   notify_target: !input notify_target
   ack_helper: !input acknowledge_helper
   repeat_minutes: !input repeat_minutes
@@ -52,18 +44,15 @@ trigger:
   - platform: state
     entity_id: >
       {{
-        expand(
-          areas | map('area_entities') | sum(start=[])
-        )
-        | selectattr('domain', 'eq', 'binary_sensor')
-        | selectattr('attributes.device_class', 'eq', 'moisture')
+        states.binary_sensor
+        | selectattr('attributes.device_class','equalto','moisture')
         | map(attribute='entity_id')
         | list
       }}
     to: "on"
 
 action:
-  # Reset acknowledgement when a new leak is detected
+  # Reset acknowledgement for a new leak
   - service: input_boolean.turn_off
     target:
       entity_id: "{{ ack_helper }}"
@@ -79,8 +68,10 @@ action:
           data:
             title: "🚨 WATER LEAK DETECTED"
             message: >
-              Water leak detected in {{ area_name(trigger.entity_id) }}.
-              Tap ACKNOWLEDGE once you have seen this.
+              Water leak detected at {{
+                state_attr(trigger.entity_id, 'friendly_name')
+              }}!
+              Tap ACKNOWLEDGE once seen.
             data:
               push:
                 sound:
