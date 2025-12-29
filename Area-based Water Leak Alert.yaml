@@ -1,86 +1,82 @@
 blueprint:
-  name: Water Leak Alert – All Moisture Sensors (Manual Notify Service)
+  name: "Water Leak Alert — Repeat until acknowledged"
   description: >
-    Sends repeating actionable notifications for any moisture (water leak) sensor.
-    Notifications repeat until acknowledged.
-    Users manually enter the notify service (e.g. notify.mobile_app_sams_iphone_13_pro).
-
+    Detects any binary_sensor with device_class: moisture switching to 'on',
+    sends actionable mobile notifications with an ACKNOWLEDGE button (action: ACK_WATER_LEAK),
+    and repeats notifications every N minutes until the selected input_boolean is turned on.
   domain: automation
-
   input:
-    notify_service:
-      name: Notify service
-      description: >
-        Enter the full notify service name.
-        Example: notify.mobile_app_sams_iphone_13_pro
-      default: notify.mobile_app_your_phone_here
-      selector:
-        text:
-
     acknowledge_helper:
       name: Acknowledge helper
-      description: Select the input_boolean used to stop repeated alerts
+      description: Select an input_boolean that will stop repeating notifications when turned ON.
       selector:
         entity:
           domain: input_boolean
-
-    repeat_minutes:
+    notify_service:
+      name: Notify service (type)
+      description: Type the notify service to call (e.g. notify.mobile_app_sams_iphone_13_pro).
+      selector:
+        text: {}
+    interval_minutes:
       name: Repeat interval (minutes)
-      default: 2
+      description: Minutes between repeated notifications
+      default: 5
       selector:
         number:
           min: 1
-          max: 30
-          step: 1
+          max: 1440
           unit_of_measurement: minutes
 
-mode: parallel
-max: 10
-
-variables:
-  notify_service: !input notify_service
-  ack_helper: !input acknowledge_helper
-  repeat_minutes: !input repeat_minutes
-
 trigger:
-  - platform: state
-    entity_id: >
-      {{
-        states.binary_sensor
-        | selectattr('attributes.device_class', 'equalto', 'moisture')
-        | map(attribute='entity_id')
-        | list
-      }}
-    to: "on"
+  - platform: event
+    event_type: state_changed
+
+condition:
+  - condition: template
+    # Only run when a binary_sensor transitions to 'on' AND it has device_class 'moisture'
+    value_template: >
+      {% set ed = trigger.event.data.entity_id %}
+      {% set to = trigger.event.data.new_state %}
+      {% set fr = trigger.event.data.old_state %}
+      {{ ed is not none
+         and ed.startswith('binary_sensor.')
+         and to is not none
+         and to.state == 'on'
+         and (fr is none or fr.state != 'on')
+         and (to.attributes.get('device_class') == 'moisture') }}
+
+mode: parallel
+max_exceeded: silent
 
 action:
-  # Reset acknowledgement whenever a new leak is detected
+  - variables:
+      ack_helper: !input acknowledge_helper
+      leak_entity: "{{ trigger.event.data.entity_id }}"
+      leak_name: "{{ state_attr(leak_entity, 'friendly_name') or leak_entity }}"
   - service: input_boolean.turn_off
     target:
       entity_id: !input acknowledge_helper
-
+  - service: "{{ notify_service }}"
+    data:
+      title: "Water Leak detected: {{ leak_name }}"
+      message: "Leak detected by {{ leak_name }}. Tap Acknowledge to stop repeating notifications."
+      data:
+        actions:
+          - action: "ACK_WATER_LEAK"
+            title: "Acknowledge"
   - repeat:
-      until:
+      while:
         - condition: template
           value_template: >
-            {{ states(ack_helper) == 'on' }}
+            {{ is_state(ack_helper, 'off') and is_state(leak_entity, 'on') }}
       sequence:
+        - delay:
+            minutes: !input interval_minutes
         - service: "{{ notify_service }}"
           data:
-            title: "🚨 WATER LEAK DETECTED"
-            message: >
-              Water leak detected at
-              {{ state_attr(trigger.entity_id, 'friendly_name') }}.
-              Tap ACKNOWLEDGE once seen.
+            title: "Water Leak still present: {{ leak_name }}"
+            message: "Leak still detected by {{ leak_name }}. Tap Acknowledge to stop notifications."
             data:
-              push:
-                sound:
-                  name: default
-                  critical: 1
-                  volume: 1.0
               actions:
-                - action: ACK_WATER_LEAK
+                - action: "ACK_WATER_LEAK"
                   title: "Acknowledge"
-
-        - delay:
-            minutes: "{{ repeat_minutes }}"
